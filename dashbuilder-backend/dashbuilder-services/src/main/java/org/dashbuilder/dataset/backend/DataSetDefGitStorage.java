@@ -25,6 +25,7 @@ import javax.enterprise.inject.Specializes;
 import javax.inject.Inject;
 import javax.inject.Named;
 
+import org.dashbuilder.dataset.backend.exception.ExceptionManager;
 import org.dashbuilder.dataset.def.DataSetDef;
 import org.uberfire.io.IOService;
 import org.uberfire.java.nio.IOException;
@@ -47,7 +48,7 @@ import static org.uberfire.java.nio.file.Files.*;
  */
 @ApplicationScoped
 @Specializes
-public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
+public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
 
     public static final String DATASET_EXT = ".dset";
 
@@ -57,6 +58,9 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
 
     @Inject
     protected DataSetDefJSONMarshaller jsonMarshaller;
+
+    @Inject
+    protected ExceptionManager exceptionManager;
 
     private FileSystem fileSystem;
     private Path root;
@@ -101,7 +105,8 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
             super.registerDataSetDef(def, subjectId, message);
         }
         catch (Exception e) {
-            log.error("Can't register the data set definition\n" + def, e);
+            throw exceptionManager.handleException(
+                    new Exception("Can't register the data set definition\n" + def, e));
         }
         finally {
             ioService.endBatch();
@@ -111,6 +116,17 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
     @Override
     public DataSetDef removeDataSetDef(String uuid, String subjectId, String message) {
         DataSetDef def = getDataSetDef(uuid);
+        return removeDataSetDef(def, subjectId, message);
+    }
+
+    public void removeDataSetDef(org.uberfire.backend.vfs.Path path, String subjectId, String comment) {
+        DataSetDef def = loadDataSetDef(path);
+        if (def != null) {
+            removeDataSetDef(def, subjectId, comment);
+        }
+    }
+
+    public DataSetDef removeDataSetDef(DataSetDef def, String subjectId, String message) {
         if (def.getVfsPath() != null) {
 
             Path defPath = convert(def.getVfsPath());
@@ -128,7 +144,7 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
                 }
             }
         }
-        return super.removeDataSetDef(uuid, subjectId, message);
+        return super.removeDataSetDef(def.getUUID(), subjectId, message);
     }
 
     public Collection<DataSetDef> listDataSetDefs() {
@@ -150,7 +166,8 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
                                 def.setVfsPath(path);
                                 result.add(def);
                             }
-                        } catch ( final Exception ex ) {
+                        } catch (final Exception e) {
+                            log.error("Data set definition read error: " + file.getFileName(), e);
                             return FileVisitResult.TERMINATE;
                         }
                         return FileVisitResult.CONTINUE;
@@ -158,6 +175,22 @@ public class DataSetDefGitRegistry extends DataSetDefRegistryImpl {
                 });
         }
         return result;
+    }
+
+    public DataSetDef loadDataSetDef(org.uberfire.backend.vfs.Path path) {
+        Path nioPath = convert(path);
+        if ( ioService.exists(nioPath) ) {
+            try {
+                String json = ioService.readAllString(nioPath);
+                DataSetDef def = jsonMarshaller.fromJson(json);
+                def.setVfsPath(path);
+                return def;
+            } catch (Exception e) {
+                String msg = "Error parsing data set JSON definition: " + path.getFileName();
+                throw exceptionManager.handleException(new Exception(msg, e));
+            }
+        }
+        return null;
     }
 
     protected Path resolvePath(String uuid) {

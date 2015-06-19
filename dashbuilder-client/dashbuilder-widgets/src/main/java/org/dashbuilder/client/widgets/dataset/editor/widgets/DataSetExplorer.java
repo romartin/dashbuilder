@@ -20,7 +20,6 @@ import com.google.gwt.event.shared.HandlerRegistration;
 import com.google.gwt.event.shared.HasHandlers;
 import com.google.gwt.user.client.ui.IsWidget;
 import com.google.gwt.user.client.ui.Widget;
-import org.dashbuilder.client.widgets.dataset.editor.widgets.events.DeleteDataSetEventHandler;
 import org.dashbuilder.client.widgets.dataset.editor.widgets.events.EditDataSetEventHandler;
 import org.dashbuilder.dataprovider.DataSetProviderType;
 import org.dashbuilder.dataset.client.DataSetClientServiceError;
@@ -57,14 +56,12 @@ public class DataSetExplorer implements IsWidget {
         boolean update(final DataSetDef oldDataSetDef, DataSetDef newDataSetDef);
 
         void show(final ShowDataSetDefCallback callback);
-        
+
         void clear();
         
         void showError(String type, String message, String cause);
 
         HandlerRegistration addEditDataSetEventHandler(final EditDataSetEventHandler handler);
-
-        HandlerRegistration addDeleteDataSetEventHandler(final DeleteDataSetEventHandler handler);
     }
 
     public interface ShowDataSetDefCallback {
@@ -167,9 +164,5 @@ public class DataSetExplorer implements IsWidget {
 
     public HandlerRegistration addEditDataSetEventHandler(EditDataSetEventHandler handler) {
         return view.addEditDataSetEventHandler(handler);
-    }
-
-    public HandlerRegistration addDeleteDataSetEventHandler(DeleteDataSetEventHandler handler) {
-        return view.addDeleteDataSetEventHandler(handler);
     }
 }

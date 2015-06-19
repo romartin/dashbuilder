@@ -35,6 +35,7 @@ import org.jboss.errai.common.client.api.ErrorCallback;
 import org.jboss.errai.common.client.api.RemoteCallback;
 import org.jboss.errai.ioc.client.container.IOC;
 import org.jboss.errai.ioc.client.container.IOCBeanDef;
+import org.uberfire.backend.vfs.Path;
 
 import javax.enterprise.context.ApplicationScoped;
 import javax.enterprise.event.Event;
@@ -155,34 +156,6 @@ public class DataSetClientServices {
                             }
                         }).lookupDataSetMetadata(uuid);
             }
-        }
-        else {
-            listener.notFound();
-        }
-    }
-
-    /**
-     * Obtain the data set definition edition instance
-     *
-     * @param uuid The UUID of the data set to edit.
-     * @throws Exception It there is an unexpected error trying to execute the lookup request.
-     */
-    public void prepareEdit(final String uuid, final DataSetEditCallback listener) throws Exception {
-        if (dataSetDefServices != null) {
-            dataSetDefServices.call(
-                new RemoteCallback<EditDataSetDef>() {
-                    public void callback(EditDataSetDef result) {
-                        if (result == null) listener.notFound();
-                        else {
-                            listener.callback(result);
-                        }
-                    }}, new ErrorCallback<Message>() {
-                    @Override
-                    public boolean error(Message message, Throwable throwable) {
-                        listener.onError(new DataSetClientServiceError(message, throwable));
-                        return true;
-                    }
-                    }).prepareEdit(uuid);
         }
         else {
             listener.notFound();
@@ -398,6 +371,14 @@ public class DataSetClientServices {
         }
     }
 
+    /**
+     * @deprecated Use <i>getPublicDataSetDefs</i> instead
+     * @since 0.3.0.Final
+     */
+    public void getRemoteSharedDataSetDefs(RemoteCallback<List<DataSetDef>> callback) {
+        getPublicDataSetDefs(callback);
+    }
+
     public void getPublicDataSetDefs(RemoteCallback<List<DataSetDef>> callback) {
         try {
             dataSetDefServices.call(callback).getPublicDataSetDefs();
@@ -461,57 +442,6 @@ public class DataSetClientServices {
                 if (pair.listener.onError(error)) t = true;
             }
             return t;
-        }
-    }
-
-    /**
-     * <p>Register a data set definition on backend.</p> 
-     * @param dataSetDef The data set definition to register.
-     * @param registerCallback The callback when data set definition has been registered. It returns the UUID of the data set definition.
-     */
-    public void registerDataSetDef(final DataSetDef dataSetDef, final DataSetDefRegisterCallback registerCallback) {
-        dataSetDefServices.call(new RemoteCallback<String>() {
-            @Override
-            public void callback(String o) {
-                registerCallback.success(o);
-            }
-        }, new ErrorCallback<Message>() {
-            @Override
-            public boolean error(Message o, Throwable throwable) {
-                return registerCallback.onError(new DataSetClientServiceError(o, throwable));
-            }
-        }).registerDataSetDef(dataSetDef);
-    }
-
-    /**
-     * <p>Removes a data set definition on the backend registry.</p> 
-     * @param uuid The data set definition UUID to remove.
-     * @param removeCallback The callback when data set definition has been removed.             
-     */
-    public void removeDataSetDef(final String uuid, final DataSetDefRemoveCallback removeCallback) {
-        if (uuid != null) {
-            dataSetDefServices.call(new RemoteCallback<Void>() {
-                @Override
-                public void callback(Void aVoid) {
-                    removeCallback.success();
-                }
-            }, new ErrorCallback<Message>() {
-                @Override
-                public boolean error(Message message, Throwable throwable) {
-                    return removeCallback.onError(new DataSetClientServiceError(message, throwable));
-                }
-            }).removeDataSetDef(uuid);
-            removeDataSet(uuid);
-        }
-    }
-
-    /**
-     * <p>Removes a registered data set from the index.</p> 
-     * @param uuid The data set UUID to remove.
-     */
-    public void removeDataSet(final String uuid) {
-        if (uuid != null) {
-            clientDataSetManager.removeDataSet(uuid);
         }
     }
 

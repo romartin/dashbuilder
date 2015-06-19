@@ -127,10 +127,10 @@ public class DataSetDefDeployer {
      */
     protected synchronized void doDeploy() {
         if (StringUtils.isBlank(directory)) return;
-        File[] files = new File(directory).listFiles(_dsetFilter);
+        File[] files = new File(directory).listFiles(_deployFilter);
         if (files == null) return;
 
-        // look for new data set deployments and updates
+        // Look for new data set deployments and updates
         for (File f : files) {
             try {
                 // Avoid repetitions
@@ -151,16 +151,16 @@ public class DataSetDefDeployer {
                     // Register the data set
                     deployed.put(f.getName(), new DataSetDefRecord(def, f));
                     if (r == null) {
-                        dataSetDefRegistry.registerDataSetDef(def, "---", "Data set definition initial deployment: " + def.getUUID());
-                        log.info("Data set definition deployed: " + def.getUUID());
+                        dataSetDefRegistry.registerDataSetDef(def, "---", "deploy(" + def.getUUID() + ")");
+                                log.info("Data set deployed: " + def.getUUID());
                     } else {
-                        dataSetDefRegistry.registerDataSetDef(def, "---", "Data set definition deployment updated: " + def.getUUID());
-                        log.info("Data set definition updated: " + def.getUUID());
+                        dataSetDefRegistry.registerDataSetDef(def, "---", "redeploy(" + def.getUUID() + ")");
+                                log.info("Data set re-deployed: " + def.getUUID());
                     }
                 }
                 else {
                     deployed.put(f.getName(), new DataSetDefRecord(existingDef, f));
-                    log.info("Data set definition found: " + def.getUUID());
+                    log.info("Data set found: " + def.getUUID());
                 }
 
             }
@@ -169,20 +169,29 @@ public class DataSetDefDeployer {
             }
         }
         // Look for data set removals
-        for (DataSetDef def : dataSetDefRegistry.getDataSetDefs(false)) {
-            if (!StringUtils.isBlank(def.getDefFilePath())) {
-                if (!new File(def.getDefFilePath()).exists()) {
-                    deployed.remove(def.getDefFilePath());
-                    dataSetDefRegistry.removeDataSetDef(def.getUUID());
-                    log.info("Data set definition removed: " + def.getUUID());
+        files = new File(directory).listFiles(_undeployFilter);
+        if (files != null) {
+            for (File f : files) {
+                if (f.delete()) {
+                    DataSetDefRecord r = deployed.remove(f.getName());
+                    if (r == null) continue;
+
+                    dataSetDefRegistry.removeDataSetDef(r.def.getUUID(), "---", "undeploy(" + r.def.getUUID() + ")");
+                    log.info("Data set removed: " + r.def.getUUID());
                 }
             }
         }
     }
 
-    FilenameFilter _dsetFilter = new FilenameFilter() {
+    FilenameFilter _deployFilter = new FilenameFilter() {
         public boolean accept(File dir, String name) {
             return name.endsWith(".dset");
+        }
+    };
+
+    FilenameFilter _undeployFilter = new FilenameFilter() {
+        public boolean accept(File dir, String name) {
+            return name.endsWith(".undeploy");
         }
     };
 

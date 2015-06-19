@@ -26,19 +26,19 @@ import com.google.gwt.user.client.ui.IsWidget;
 import com.google.gwt.user.client.ui.Widget;
 import org.dashbuilder.client.widgets.dataset.editor.DataSetDefEditWorkflow;
 import org.dashbuilder.client.widgets.dataset.editor.widgets.editors.DataSetColumnsEditor;
+import org.dashbuilder.client.widgets.dataset.editor.widgets.events.SaveDataSetEvent;
+import org.dashbuilder.client.widgets.dataset.editor.widgets.events.SaveDataSetEventHandler;
 import org.dashbuilder.client.widgets.resources.i18n.DataSetEditorConstants;
 import org.dashbuilder.dataprovider.DataSetProviderType;
 import org.dashbuilder.dataset.*;
 import org.dashbuilder.dataset.backend.EditDataSetDef;
 import org.dashbuilder.dataset.client.*;
 import org.dashbuilder.dataset.def.*;
-import org.dashbuilder.dataset.events.DataSetDefRegisteredEvent;
-import org.dashbuilder.dataset.events.DataSetDefRemovedEvent;
 import org.dashbuilder.dataset.filter.DataSetFilter;
-import org.dashbuilder.dataset.group.DataSetGroup;
 import org.dashbuilder.displayer.DisplayerSettings;
 import org.dashbuilder.displayer.DisplayerSettingsFactory;
 import org.dashbuilder.displayer.TableDisplayerSettingsBuilder;
+import org.dashbuilder.displayer.client.AbstractDisplayerListener;
 import org.dashbuilder.displayer.client.DataSetHandlerImpl;
 import org.dashbuilder.displayer.client.Displayer;
 import org.dashbuilder.displayer.client.DisplayerHelper;
@@ -46,15 +46,11 @@ import org.dashbuilder.displayer.client.DisplayerListener;
 import org.dashbuilder.displayer.client.widgets.filter.DataSetFilterEditor;
 import org.dashbuilder.displayer.impl.TableDisplayerSettingsBuilderImpl;
 import org.dashbuilder.renderer.client.DefaultRenderer;
-import org.jboss.errai.common.client.api.RemoteCallback;
 
 import javax.enterprise.context.Dependent;
-import javax.enterprise.event.Observes;
 import javax.inject.Inject;
 import javax.validation.ConstraintViolation;
 import java.util.*;
-
-import static org.uberfire.commons.validation.PortablePreconditions.checkNotNull;
 
 /**
  * <p>Data Set Definition editor widget.</p>
@@ -98,7 +94,6 @@ public class DataSetEditor implements IsWidget {
         View edit(final DataSetDef dataSetDef, final DataSetDefEditWorkflow workflow);
         Set getViolations();
         View setEditMode(final boolean editMode);
-        View showHomeView(final int dsetCount, final ClickHandler newDataSetHandler);
         View showProviderSelectionView();
         View showBasicAttributesEditionView(final String uuid);
         View showSQLAttributesEditorView();
@@ -114,6 +109,7 @@ public class DataSetEditor implements IsWidget {
         View showNextButton(final String title, final String helpText, final ButtonType type, final ClickHandler nextHandler);
         View enableNextButton(final boolean enabled);
         View showCancelButton(final ClickHandler cancelHandler);
+        View hideCancelButton();
         HandlerRegistration addConfigurationTabClickHandler(final ClickHandler handler);
         HandlerRegistration addPreviewTabClickHandler(final ClickHandler handler);
         HandlerRegistration addAdvancedConfigurationTabClickHandler(final ClickHandler handler);
@@ -125,22 +121,23 @@ public class DataSetEditor implements IsWidget {
     }
     
     private enum WorkflowView {
-        HOME, PROVIDER_SELECTION, DATA_CONF, PREVIEW_AND_ADVANCED        
+        PROVIDER_SELECTION, DATA_CONF, PREVIEW_AND_ADVANCED
     }
 
-    final View view = new DataSetEditorView();
+    protected final View view = new DataSetEditorView();
 
-    private DataSetClientServices clientServices;
-    private DataSetDef dataSetDef;
-    private List<DataColumnDef> originalColumns;
-    private boolean updateColumnsView = false;
-    private Displayer tableDisplayer;
-    private WorkflowView currentWfView;
+    protected DataSetClientServices clientServices;
+    protected DataSetDef dataSetDef;
+    protected List<DataColumnDef> originalColumns;
+    protected boolean updateColumnsView = false;
+    protected Displayer tableDisplayer;
+    protected WorkflowView currentWfView;
+    protected boolean editMode = false;
+    protected DataSetDefValidationCallback validationCallback = null;
 
     @Inject
     public DataSetEditor(DataSetClientServices clientServices) {
         this.clientServices = clientServices;
-        showHomeView();
         init();
     }
 
@@ -155,8 +152,8 @@ public class DataSetEditor implements IsWidget {
         ((DataSetEditorView)view).setWidth(w);
         return this;
     }
-    
-    public DataSetEditor newDataSet() {
+
+    public DataSetEditor newDataSetDef() {
         
         clear();
         
@@ -165,7 +162,7 @@ public class DataSetEditor implements IsWidget {
 
         originalColumns = null;
         updateColumnsView = true;
-        view.setEditMode(false);
+        view.setEditMode(editMode = false);
 
         // Restart workflow.
         edit();
@@ -175,64 +172,34 @@ public class DataSetEditor implements IsWidget {
         showProviderSelectionView();
 
         // Next button.
-       showNextButton();
+        showNextButton();
+        hideCancelButton();
                 
         return this;
     }
-    
-    public DataSetEditor editDataSet(final String uuid) {
 
-        if (uuid == null || uuid.trim().length() == 0) {
-            showError("DataSetEditor#editDataSet - No UUID specified.");
-            return this;
+    public void editDataSetDef(EditDataSetDef editDataSetDef) {
+
+        clear();
+
+        dataSetDef = editDataSetDef.getDefinition();
+        originalColumns = editDataSetDef.getColumns();
+        updateColumnsView = true;
+
+        if (dataSetDef == null) {
+            showError(DataSetEditorConstants.INSTANCE.defNotFound());
+            return;
         }
 
-        try {
-            
-            clientServices.prepareEdit(uuid, new DataSetEditCallback() {
-                @Override
-                public void callback(final EditDataSetDef editDataSetDef) {
-
-                    clear();
-
-                    DataSetEditor.this.dataSetDef = editDataSetDef.getDefinition();
-                    DataSetEditor.this.originalColumns = editDataSetDef.getColumns();
-                    DataSetEditor.this.updateColumnsView = true;
-
-                    if (dataSetDef == null) {
-                        showError(DataSetEditorConstants.INSTANCE.defNotFound());
-                        return;
-                    }
-
-                    // Update the screens, displayers & restart the workflow.
-                    edit();
-                    view.setEditMode(true);
-                    showBasicAttributesEditionView();
-                    showProviderSpecificAttributesEditionView(true);
-                    hideTestButton();
-                    updateTableDisplayer();
-
-                }
-
-                @Override
-                public void notFound() {
-                    showError("Data set definition with uuid [" + uuid + "] not found.");
-                }
-
-                @Override
-                public boolean onError(DataSetClientServiceError error) {
-                    showError(error);
-                    showHomeView();
-                    return false;
-                }
-            });
-
-        } catch (Exception e) {
-            showError(e.getMessage());
-        }
-        return this;
+        // Update the screens, displayers & restart the workflow.
+        edit();
+        view.setEditMode(editMode = true);
+        showBasicAttributesEditionView();
+        showProviderSpecificAttributesEditionView(true);
+        hideTestButton();
+        updateTableDisplayer();
     }
-    
+
     private DataSetDef createDataSetDef(final DataSetProviderType type) {
         DataSetDef result = new DataSetDef();
         if (type != null) result = DataSetProviderType.createDataSetDef(dataSetDef.getProvider());
@@ -307,9 +274,7 @@ public class DataSetEditor implements IsWidget {
             view.showLoadingView();
         }
     }
-    
-    
-    
+
     private final ClickHandler providerScreenNextButtonHandler = new ClickHandler() {
         @Override
         public void onClick(final ClickEvent event) {
@@ -326,6 +291,7 @@ public class DataSetEditor implements IsWidget {
                 // Build basic attributes view.
                 currentWfView = WorkflowView.DATA_CONF;
                 showBasicAttributesEditionView();
+                showCancelButton();
                 showTestButton();
                 showProviderSpecificAttributesEditionView(false);
 
@@ -347,9 +313,6 @@ public class DataSetEditor implements IsWidget {
                 originalColumns = null;
                 updateColumnsView = true;
 
-                hideTestButton();
-                view.enableNextButton(true);
-                
                 // Update the preview table.
                 updateTableDisplayer();
             }
@@ -360,7 +323,6 @@ public class DataSetEditor implements IsWidget {
         @Override
         public void onClick(ClickEvent event) {
             showTestButton();
-            view.enableNextButton(false);
         }
     };
 
@@ -368,7 +330,7 @@ public class DataSetEditor implements IsWidget {
         @Override
         public void onClick(ClickEvent event) {
             hideTestButton();
-            view.enableNextButton(true);
+            view.enableNextButton(!editMode);
         }
     };
 
@@ -376,82 +338,73 @@ public class DataSetEditor implements IsWidget {
         @Override
         public void onClick(ClickEvent event) {
             hideTestButton();
-            view.enableNextButton(true);
+            view.enableNextButton(!editMode);
         }
     };
 
     private final ClickHandler saveButtonHandler = new ClickHandler() {
         @Override
         public void onClick(final ClickEvent event) {
-            final Set violations = save();
-            if (isValid(violations)) {
-                    // Valid
-                    persist();
-            }
+            checkValid(new DataSetDefValidationCallback() {
+                @Override
+                public void valid(DataSetDef def, DataSet dataSet) {
+                    onSave();
+                }
+                @Override
+                public void invalid(DataSetClientServiceError error) {
+                    showError(error);
+                }
+            });
         }
     };
+
+    public void checkValid(DataSetDefValidationCallback callback) {
+        final Set violations = save();
+        if (!isValid(violations)) {
+            callback.invalid(null);
+        } else {
+            validationCallback = callback;
+            updateTableDisplayer();
+        }
+    }
+
+    private boolean isValid(Set violations) {
+        return violations.isEmpty();
+    }
+
+    private SaveDataSetEventHandler saveCallbackHandler = null;
+
+    private void onSave() {
+
+        dataSetDef.setPublic(true);
+        dataSetDef.setAllColumnsEnabled(false);
+
+        if (saveCallbackHandler != null) {
+            saveCallbackHandler.onSaveDataSet(new SaveDataSetEvent(dataSetDef));
+        }
+    }
+
+    public void addSaveDataSetEventHandler(SaveDataSetEventHandler handler) {
+        saveCallbackHandler = handler;
+    }
 
     @Override
     public Widget asWidget() {
         return view.asWidget();
     }
 
-    private void persist() {
-
-        dataSetDef.setPublic(true);
-        dataSetDef.setAllColumnsEnabled(false);
-        
-        // Register the definition
-        clientServices.registerDataSetDef(dataSetDef, new DataSetDefRegisterCallback() {
-            @Override
-            public void success(final String uuid) {
-                dataSetDef.setUUID(uuid);
-                showHomeView();
-            }
-
-            @Override
-            public boolean onError(DataSetClientServiceError error) {
-                showError(error);
-                return false;
-            }
-        });
-    }
-    
-    private void showHomeView() {
-        clear();
-        clientServices.getPublicDataSetDefs(new RemoteCallback<List<DataSetDef>>() {
-            public void callback(List<DataSetDef> dataSetDefs) {
-                final int i = dataSetDefs != null ? dataSetDefs.size() : 0;
-                view.showHomeView(i, newDataSetHandler);
-                currentWfView = WorkflowView.HOME;
-            }
-        });
-    }
-
-    private void showError(final DataSetClientServiceError error) {
+    public void showError(final DataSetClientServiceError error) {
         final String type = error.getThrowable() != null ? error.getThrowable().getClass().getName() : null;
         final String message = error.getThrowable() != null ? error.getThrowable().getMessage() : error.getMessage().toString();
         final String cause = error.getThrowable() != null && error.getThrowable().getCause() != null ? error.getThrowable().getCause().getMessage() : null;
         showError(type, message, cause);
     }
 
-    private void showError(final String message) {
+    public void showError(final String message) {
         showError(null, message, null);
     }
 
-    private void showError(final Exception e) {
-        if (e != null) {
-            String type = null;
-            String message = null;
-            String cause = null;
-            type = e.getClass().getName();
-            if (e.getMessage() != null) message = e.getMessage();
-            if (e.getCause() != null) cause = e.getCause().getMessage();
-            showError(type, message, cause);
-        }
-    }
-    
-    private void showError(final String type, final String message, final String cause) {
+    public void showError(final String type, final String message, final String cause) {
         if (type != null) GWT.log("Error type: " + type);
         if (message != null) GWT.log("Error message: " + message);
         if (cause != null) GWT.log("Error cause: " + cause);
@@ -513,7 +466,7 @@ public class DataSetEditor implements IsWidget {
     }
     
     private View edit() {
-        return view.edit(dataSetDef, workflow).showCancelButton(cancelHandler);
+        return view.edit(dataSetDef, workflow);
     }
     
     private Set save() {
@@ -525,16 +478,10 @@ public class DataSetEditor implements IsWidget {
     private final ClickHandler cancelHandler = new ClickHandler() {
         @Override
         public void onClick(ClickEvent event) {
-            showHomeView();
-            }
-    };
-    private final ClickHandler newDataSetHandler = new ClickHandler() {
-        @Override
-        public void onClick(ClickEvent event) {
-            newDataSet();
+            newDataSetDef();
         }
     };
-    
+
     private final DataSetColumnsEditor.ColumnsChangedEventHandler columnsChangedEventHandler = new DataSetColumnsEditor.ColumnsChangedEventHandler() {
         @Override
         public void onColumnsChanged(DataSetColumnsEditor.ColumnsChangedEvent event) {
@@ -560,7 +507,7 @@ public class DataSetEditor implements IsWidget {
     /**
      * <p>When creating the table preview screen, this listener waits for data set available and then performs other operations.</p> 
      */
-    private final DisplayerListener tablePreviewListener = new DisplayerListener() {
+    private final DisplayerListener tablePreviewListener = new AbstractDisplayerListener() {
         
         @Override
         public void onDraw(Displayer displayer) {
@@ -606,68 +553,68 @@ public class DataSetEditor implements IsWidget {
                         showColumnsEditorView(dataSet);
                         showFilterEditorView(dataSet);
                     }
-                    
+                    // Enable the right buttons
+                    hideTestButton();
                     showSaveButton();
+
+                    // Call the validation callback if any
+                    if (validationCallback != null) {
+                        validationCallback.valid(dataSetDef, dataSet);
+                        validationCallback = null;
+                    }
                 }
             }
         }
 
         @Override
-        public void onRedraw(Displayer displayer) {
-            
-        }
-
-        @Override
-        public void onClose(Displayer displayer) {
-
-        }
-
-        @Override
-        public void onFilterEnabled(Displayer displayer, DataSetGroup groupOp) {
-            
-        }
-
-        @Override
-        public void onFilterReset(Displayer displayer, List<DataSetGroup> groupOps) {
-
-        }
-
-        @Override
         public void onError(Displayer displayer, DataSetClientServiceError error) {
             showError(error);
-            showTestButton();
-            if (WorkflowView.PREVIEW_AND_ADVANCED.equals(currentWfView)) {
-                showSaveButton();
-                view.enableNextButton(false);
+            if (validationCallback != null) {
+                validationCallback.invalid(error);
+                validationCallback = null;
             }
         }
-
     };
-    
+
     private void showNextButton() {
+        view.enableNextButton(true);
         view.showNextButton(DataSetEditorConstants.INSTANCE.next(),
                 DataSetEditorConstants.INSTANCE.next_description(),
                 ButtonType.PRIMARY,
                 providerScreenNextButtonHandler);
-        view.enableNextButton(true);
     }
 
     private void showSaveButton() {
-        view.showNextButton(DataSetEditorConstants.INSTANCE.save(),
-                DataSetEditorConstants.INSTANCE.save_description(),
-                ButtonType.SUCCESS,
-                saveButtonHandler);
-        view.enableNextButton(true);
+        view.enableNextButton(!editMode);
+        if (!editMode) {
+            view.showNextButton(DataSetEditorConstants.INSTANCE.save(),
+                    DataSetEditorConstants.INSTANCE.save_description(),
+                    ButtonType.SUCCESS,
+                    saveButtonHandler);
+        }
     }
 
     private void showTestButton() {
-        view.showTestButton(DataSetEditorConstants.INSTANCE.test(), DataSetEditorConstants.INSTANCE.updateTest_description(), testButtonHandler);
+        view.enableNextButton(false);
+        if (editMode) {
+            view.showTestButton(DataSetEditorConstants.INSTANCE.test(), DataSetEditorConstants.INSTANCE.updateTest_description(), testButtonHandler);
+        } else {
+            view.showTestButton(DataSetEditorConstants.INSTANCE.test(), DataSetEditorConstants.INSTANCE.test_description(), testButtonHandler);
+        }
+    }
+
+    private void showCancelButton() {
+        view.showCancelButton(cancelHandler);
     }
 
     private void hideTestButton() {
         view.hideTestButton();
     }
     
+    private void hideCancelButton() {
+        view.hideCancelButton();
+    }
+
     private void clear() {
         this.dataSetDef = null;
         this.originalColumns = null;
@@ -675,34 +622,4 @@ public class DataSetEditor implements IsWidget {
         this.tableDisplayer = null;
         view.clear();
     }
-    
-    private boolean isValid(Set violations) {
-        return violations.isEmpty();
-    }
-
-    private boolean isHomeViewVisible() {
-        return WorkflowView.HOME.equals(currentWfView);
-    }
-    
-    // Be aware of data set lifecycle events
-
-    private void onDataSetDefRegisteredEvent(@Observes DataSetDefRegisteredEvent event) {
-        checkNotNull("event", event);
-
-        final DataSetDef def = event.getDataSetDef();
-        if (isHomeViewVisible() && def != null && def.isPublic()) {
-            // Reload home view with new data set count value.
-            this.showHomeView();
-        }
-    }
-
-    private void onDataSetDefRemovedEvent(@Observes DataSetDefRemovedEvent event) {
-        checkNotNull("event", event);
-
-        if(isHomeViewVisible()) {
-            // Reload home view with new data set count value.
-            this.showHomeView();
-        }
-    }
-
 }

@@ -19,6 +19,8 @@ import javax.annotation.PostConstruct;
 import javax.enterprise.context.ApplicationScoped;
 import javax.inject.Inject;
 
+import org.dashbuilder.dataset.DataSetFactory;
+import org.dashbuilder.dataset.DataSetManager;
 import org.dashbuilder.dataset.backend.DataSetDefDeployer;
 import org.dashbuilder.dataset.def.DataSetDefRegistry;
 import org.slf4j.Logger;

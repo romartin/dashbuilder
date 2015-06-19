@@ -20,6 +20,7 @@ import java.util.List;
 import org.dashbuilder.dataset.backend.EditDataSetDef;
 import org.dashbuilder.dataset.def.DataSetDef;
 import org.jboss.errai.bus.server.annotations.Remote;
+import org.uberfire.backend.vfs.Path;
 
 /**
  * Services for the handling of data set definitions
@@ -35,20 +36,15 @@ public interface DataSetDefServices {
     /**
      * Register a data set definition.
      * @param definition The data set definition.
+     * @param message, A message top store along the registration request. If null is ignored.
      * @return The registered data set definition UUID. If UUID not present on the definition from the argument <code>definition</code>, the UUID will be generated.
      */
-    String registerDataSetDef(DataSetDef definition);
+    String registerDataSetDef(DataSetDef definition, String message);
 
     /**
      * Removes a data set definition from the registry.
+     * @param message, A message top store along the registration request. If null is ignored.
      * @param uuid The data set definition identifier.
      */
-    void removeDataSetDef(String uuid);
-
-    /**
-     * Prepare a DataSetDef for edition.
-     *
-     * @return A cloned definition and the original column definition list.
-     */
-    EditDataSetDef prepareEdit(String uuid) throws Exception;
+    void removeDataSetDef(String uuid, String message);
 }

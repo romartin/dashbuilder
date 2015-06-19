@@ -1,0 +1,4 @@
+- CSV data set deployed. CSV file not found
+- ObservablePath events not working => test on kie-wb
+- Data set API registration seems to fail (jbpmAuditLog f.i)
+- Notify about changes on close => current model hash

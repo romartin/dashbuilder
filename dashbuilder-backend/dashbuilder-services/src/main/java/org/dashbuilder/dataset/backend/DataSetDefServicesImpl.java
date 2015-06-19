@@ -35,6 +35,7 @@ import org.jboss.errai.bus.server.annotations.Service;
 import org.jboss.errai.bus.server.api.RpcContext;
 import org.jboss.errai.security.shared.api.identity.User;
 import org.slf4j.Logger;
+import org.uberfire.backend.vfs.Path;
 import org.uberfire.rpc.SessionInfo;
 
 @ApplicationScoped
@@ -81,15 +82,6 @@ public class DataSetDefServicesImpl implements DataSetDefServices {
     }
 
     @Override
-    public String registerDataSetDef(DataSetDef definition) {
-        return registerDataSetDef(definition, "---");
-    }
-
-    @Override
-    public void removeDataSetDef(final String uuid) {
-        removeDataSetDef(uuid, "---");
-    }
-
     public String registerDataSetDef(DataSetDef definition, String comment) {
         // Data sets registered from the UI does not contain a UUID.
         if (definition.getUUID() == null) {
@@ -102,53 +94,13 @@ public class DataSetDefServicesImpl implements DataSetDefServices {
         return definition.getUUID();
     }
 
+    @Override
     public void removeDataSetDef(final String uuid, String comment) {
         final DataSetDef def = dataSetDefRegistry.getDataSetDef(uuid);
         if (def != null) {
             dataSetDefRegistry.removeDataSetDef(uuid,
                 identity != null ? identity.getIdentifier() : "---",
                 comment);
-        }
-    }
-
-    @Override
-    public EditDataSetDef prepareEdit(String uuid) throws Exception {
-        DataSetMetadata _d = null;
-        try {
-            _d = dataSetManager.getDataSetMetadata(uuid);
-            DataSetDef def = _d.getDefinition();
-            DataSetDef cloned = def.clone();
-
-            // Enable all columns and set columns to null, force to obtain metadata with all original columns
-            // and all original column types.
-            boolean clonedAllColumns = cloned.isAllColumnsEnabled();
-            List<DataColumnDef> clonedColumns = cloned.getColumns();
-            cloned.setAllColumnsEnabled(true);
-            cloned.setColumns(null);
-            cloned.setPublic(false);
-
-            // Obtain all original columns and all original column types.
-            DataSetMetadata _cd = dataSetManager.resolveProvider(cloned)
-                    .getDataSetMetadata(cloned);
-
-            // Return the list of original columns and its types.
-            List<DataColumnDef> columns = new ArrayList<DataColumnDef>();
-            if (_cd.getNumberOfColumns() > 0) {
-                for (int x = 0; x < _cd.getNumberOfColumns(); x++) {
-                    String cId = _cd.getColumnId(x);
-                    ColumnType cType = _cd.getColumnType(x);
-                    DataColumnDef cdef = new DataColumnDef(cId, cType);
-                    columns.add(cdef);
-                }
-            }
-
-            // Set columns attributes as initialy were.
-            cloned.setAllColumnsEnabled(clonedAllColumns);
-            cloned.setColumns(clonedColumns);
-            return new EditDataSetDef(cloned, columns);
-
-        } catch (DataSetLookupException e) {
-            throw exceptionManager.handleException(e);
         }
     }
 }
