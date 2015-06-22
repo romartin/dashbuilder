@@ -152,11 +152,11 @@ public class DataSetDefRegistryImpl implements DataSetDefRegistry {
     }
 
     public synchronized void registerDataSetDef(DataSetDef newDef) {
-        registerDataSetDef(newDef, "---", "registerDataSetDef(" + newDef.getUUID() + ")");
+        registerDataSetDef(newDef, "---", "register(" + newDef.getUUID() + ")");
     }
 
     public synchronized DataSetDef removeDataSetDef(String uuid) {
-        return removeDataSetDef(uuid, "---", "removeDataSetDef(" + uuid + ")");
+        return removeDataSetDef(uuid, "---", "remove(" + uuid + ")");
     }
 
     public synchronized void registerDataSetDef(DataSetDef newDef, String subjectId, String message) {

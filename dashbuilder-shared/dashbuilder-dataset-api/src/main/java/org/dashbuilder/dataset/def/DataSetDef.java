@@ -42,7 +42,6 @@ public class DataSetDef {
     protected String UUID;
     @NotNull(message = "{dataSetApi_dataSetDef_name_notNull}")
     protected String name;
-    protected String defFilePath;
     protected Path vfsPath;
     @NotNull(message = "{dataSetApi_dataSetDef_provider_notNull}")
     protected DataSetProviderType provider;
@@ -79,14 +78,6 @@ public class DataSetDef {
 
     public void setName(String name) {
         this.name = name;
-    }
-
-    public String getDefFilePath() {
-        return defFilePath;
-    }
-
-    public void setDefFilePath(String defFilePath) {
-        this.defFilePath = defFilePath;
     }
 
     public Path getVfsPath() {
@@ -225,7 +216,6 @@ public class DataSetDef {
         def.setUUID(getUUID());
         def.setName(getName());
         def.setProvider(getProvider());
-        def.setDefFilePath(getDefFilePath());
         def.setVfsPath(getVfsPath());
         def.setPublic(isPublic());
         final DataSetFilter currentFilter = getDataSetFilter();

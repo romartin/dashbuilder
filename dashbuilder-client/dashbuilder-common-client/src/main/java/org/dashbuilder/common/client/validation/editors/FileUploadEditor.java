@@ -198,7 +198,14 @@ public class FileUploadEditor extends Composite implements
         if (!isEmpty(fileUpload.asEditor().getValue())) {
             fileLabel.setVisible(false);
         } else if (!isEmpty(text)) {
-            fileLabel.setText(text);
+
+            int slash = text.lastIndexOf("/") != -1 ? text.lastIndexOf("/") : text.lastIndexOf("\\");
+
+            if (slash == -1) {
+                fileLabel.setText(text);
+            } else {
+                fileLabel.setText(text.substring(slash+1));
+            }
             fileLabel.setVisible(true);
         }
     }

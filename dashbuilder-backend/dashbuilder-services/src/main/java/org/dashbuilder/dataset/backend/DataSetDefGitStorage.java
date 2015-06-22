@@ -15,6 +15,11 @@
  */
 package org.dashbuilder.dataset.backend;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -25,7 +30,13 @@ import javax.enterprise.inject.Specializes;
 import javax.inject.Inject;
 import javax.inject.Named;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.dashbuilder.config.Config;
+import org.dashbuilder.dataprovider.backend.csv.CSVFileStorage;
 import org.dashbuilder.dataset.backend.exception.ExceptionManager;
+import org.dashbuilder.dataset.def.CSVDataSetDef;
 import org.dashbuilder.dataset.def.DataSetDef;
 import org.uberfire.io.IOService;
 import org.uberfire.java.nio.IOException;
@@ -48,9 +59,13 @@ import static org.uberfire.java.nio.file.Files.*;
  */
 @ApplicationScoped
 @Specializes
-public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
+public class DataSetDefGitStorage extends DataSetDefRegistryImpl implements CSVFileStorage {
 
     public static final String DATASET_EXT = ".dset";
+    public static final String CSV_EXT = ".csv";
+
+    @Inject @Config("1048576" /* 1 Mb */)
+    protected int maxCsvLength;
 
     @Inject
     @Named("ioStrategy")
@@ -99,9 +114,14 @@ public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
         }
         try {
             String defJson = jsonMarshaller.toJsonString(def);
-            Path defPath = def.getVfsPath() == null ? resolvePath(def.getUUID()) : convert(def.getVfsPath());
+            Path defPath = def.getVfsPath() == null ? resolvePath(def) : convert(def.getVfsPath());
             ioService.write(defPath, defJson);
             def.setVfsPath(convert(defPath));
+
+            // CSV specific
+            if (def instanceof CSVDataSetDef) {
+                saveCSVFile((CSVDataSetDef) def);
+            }
             super.registerDataSetDef(def, subjectId, message);
         }
         catch (Exception e) {
@@ -139,6 +159,11 @@ public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
                 }
                 try {
                     ioService.deleteIfExists(defPath, StandardDeleteOption.NON_EMPTY_DIRECTORIES);
+
+                    // CSV specific
+                    if (def instanceof CSVDataSetDef) {
+                        deleteCSVFile((CSVDataSetDef) def);
+                    }
                 } finally {
                     ioService.endBatch();
                 }
@@ -179,7 +204,7 @@ public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
 
     public DataSetDef loadDataSetDef(org.uberfire.backend.vfs.Path path) {
         Path nioPath = convert(path);
-        if ( ioService.exists(nioPath) ) {
+        if (ioService.exists(nioPath)) {
             try {
                 String json = ioService.readAllString(nioPath);
                 DataSetDef def = jsonMarshaller.fromJson(json);
@@ -193,7 +218,57 @@ public class DataSetDefGitStorage extends DataSetDefRegistryImpl {
         return null;
     }
 
-    protected Path resolvePath(String uuid) {
-        return fileSystem.getPath(uuid + DATASET_EXT);
+    protected Path resolvePath(DataSetDef def) {
+        return fileSystem.getPath(def.getUUID() + DATASET_EXT);
+    }
+
+    //
+    // CSV files storage
+    //
+
+    @Override
+    public InputStream getCSVInputStream(CSVDataSetDef def) {
+        Path nioPath = resolveCsvPath(def);
+        if (ioService.exists(nioPath)) {
+            return ioService.newInputStream(nioPath);
+        }
+        return null;
+    }
+
+    @Override
+    public void deleteCSVFile(CSVDataSetDef def) {
+        Path csvPath = resolveCsvPath(def);
+
+        if (ioService.exists(csvPath)) {
+            ioService.deleteIfExists(csvPath, StandardDeleteOption.NON_EMPTY_DIRECTORIES);
+        }
+    }
+
+    @Override
+    public void saveCSVFile(CSVDataSetDef def) {
+        String path = def.getFilePath();
+        if (!StringUtils.isBlank(path)) {
+
+            File csvFile = new File(path);
+            if (csvFile.exists()) {
+                if (csvFile.length() > maxCsvLength) {
+                    String msg = "CSV file length exceeds the maximum allowed: " + maxCsvLength / 1024 + " Kb";
+                    throw exceptionManager.handleException(new Exception(msg));
+                }
+
+                try {
+                    Path defPath = resolveCsvPath(def);
+                    String csvContent = FileUtils.readFileToString(csvFile);
+                    ioService.write(defPath, csvContent);
+                } catch (Exception e) {
+                    String msg = "Error saving CSV file: " + csvFile;
+                    throw exceptionManager.handleException(new Exception(msg, e));
+                }
+            }
+        }
+    }
+
+    protected Path resolveCsvPath(CSVDataSetDef def) {
+        return fileSystem.getPath(def.getUUID() + CSV_EXT);
     }
 }

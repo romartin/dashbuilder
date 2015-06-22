@@ -59,8 +59,6 @@ public class DataSetDefVfsServicesImpl implements DataSetDefVfsServices {
 
             // Clone the definition
             DataSetDef cloned = def.clone();
-            String newUuid = uuidGenerator.newUuid();
-            cloned.setUUID(newUuid);
 
             // Enable all columns and set columns to null, force to obtain metadata with all original columns
             // and all original column types.

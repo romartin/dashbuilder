@@ -16,6 +16,7 @@
 package org.dashbuilder.dataset.editor.client.screens;
 
 import javax.enterprise.context.Dependent;
+import javax.enterprise.event.Observes;
 import javax.inject.Inject;
 
 import com.google.gwt.user.client.ui.IsWidget;
@@ -29,6 +30,7 @@ import org.dashbuilder.dataset.client.DataSetClientServiceError;
 import org.dashbuilder.dataset.client.DataSetReadyCallback;
 import org.dashbuilder.dataset.def.DataSetDef;
 import org.dashbuilder.dataset.editor.client.resources.i18n.DataSetAuthoringConstants;
+import org.dashbuilder.dataset.events.DataSetDefRemovedEvent;
 import org.dashbuilder.dataset.service.DataSetDefVfsServices;
 import org.dashbuilder.dataset.validation.DataSetValidationMessages;
 import org.jboss.errai.bus.client.api.messaging.Message;
@@ -81,7 +83,6 @@ public class DataSetDefEditorPresenter extends BaseEditor {
 
     View view;
     DataSetDef model;
-    PlaceRequest placeRequest;
 
     @Inject
     public DataSetDefEditorPresenter(final View view) {
@@ -91,7 +92,6 @@ public class DataSetDefEditorPresenter extends BaseEditor {
 
     @OnStartup
     public void onStartup(final ObservablePath path, final PlaceRequest place) {
-        this.placeRequest = place;
         init(path,
                 place,
                 resourceType,
@@ -227,5 +227,9 @@ public class DataSetDefEditorPresenter extends BaseEditor {
 
     protected Caller<? extends SupportsCopy> getCopyServiceCaller() {
         return services;
+    }
+
+    private void onDataSetDefRemovedEvent(@Observes DataSetDefRemovedEvent event) {
+        placeManager.closePlace(place);
     }
 }

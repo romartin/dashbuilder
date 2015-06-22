@@ -16,9 +16,6 @@
 package org.dashbuilder.dataset.backend;
 
 import java.io.*;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.enterprise.context.ApplicationScoped;
@@ -28,6 +25,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.dashbuilder.config.Config;
 import org.dashbuilder.dataprovider.DataSetProviderRegistry;
+import org.dashbuilder.dataset.def.CSVDataSetDef;
 import org.dashbuilder.dataset.def.DataSetDef;
 import org.dashbuilder.dataset.def.DataSetDefRegistry;
 import org.slf4j.Logger;
@@ -57,7 +55,6 @@ public class DataSetDefDeployer {
     protected Logger log;
 
     protected Thread watcherThread;
-    protected Map<String,DataSetDefRecord> deployed = new HashMap<String,DataSetDefRecord>();
 
     public String getDirectory() {
         return directory;
@@ -127,57 +124,73 @@ public class DataSetDefDeployer {
      */
     protected synchronized void doDeploy() {
         if (StringUtils.isBlank(directory)) return;
+
+        // Look for data sets deploy
         File[] files = new File(directory).listFiles(_deployFilter);
-        if (files == null) return;
+        if (files != null) {
+            for (File f : files) {
+                try {
+                    // Avoid repetitions
+                    f.delete();
 
-        // Look for new data set deployments and updates
-        for (File f : files) {
-            try {
-                // Avoid repetitions
-                DataSetDefRecord r = deployed.get(f.getName());
-                if (r != null && !r.isOutdated()) continue;
+                    // Get the .dset file
+                    File dsetFile = new File(f.getAbsolutePath().replace(".deploy", ""));
+                    if (!dsetFile.exists()) continue;
 
-                // Read & Parse the definition file
-                FileReader fileReader = new FileReader(f);
-                String json = IOUtils.toString(fileReader);
-                DataSetDef def = jsonMarshaller.fromJson(json);
-                if (StringUtils.isBlank(def.getUUID())) def.setUUID(f.getName());
-                def.setDefFilePath(f.getAbsolutePath());
+                    // Read & parse the data set
+                    FileReader fileReader = new FileReader(dsetFile);
+                    String json = IOUtils.toString(fileReader);
+                    DataSetDef def = jsonMarshaller.fromJson(json);
+                    if (StringUtils.isBlank(def.getUUID())) def.setUUID(dsetFile.getName());
 
-                // Check if the data set really needs to be registered.
-                DataSetDef existingDef = dataSetDefRegistry.getDataSetDef(def.getUUID());
-                if (existingDef == null || !jsonMarshaller.toJsonString(existingDef).equals(jsonMarshaller.toJsonString(def))) {
-
-                    // Register the data set
-                    deployed.put(f.getName(), new DataSetDefRecord(def, f));
-                    if (r == null) {
-                        dataSetDefRegistry.registerDataSetDef(def, "---", "deploy(" + def.getUUID() + ")");
-                                log.info("Data set deployed: " + def.getUUID());
-                    } else {
-                        dataSetDefRegistry.registerDataSetDef(def, "---", "redeploy(" + def.getUUID() + ")");
-                                log.info("Data set re-deployed: " + def.getUUID());
+                    // CSV specific ...
+                    if (def instanceof CSVDataSetDef) {
+                        CSVDataSetDef csvDef = (CSVDataSetDef) def;
+                        File csvFile = getCSVFile(csvDef);
+                        if (csvFile != null) {
+                            csvDef.setFilePath(csvFile.getAbsolutePath());
+                        } else {
+                            log.error("Data set CSV file not found: " + f.getName());
+                            continue;
+                        }
                     }
-                }
-                else {
-                    deployed.put(f.getName(), new DataSetDefRecord(existingDef, f));
-                    log.info("Data set found: " + def.getUUID());
-                }
 
-            }
-            catch (Exception e) {
-                log.error("Error parsing the data set definition file: " + f.getName(), e);
+                    // Check if the data set really needs to be registered.
+                    DataSetDef existingDef = dataSetDefRegistry.getDataSetDef(def.getUUID());
+                    if (existingDef != null && jsonMarshaller.toJsonString(existingDef).equals(jsonMarshaller.toJsonString(def))) {
+                        // Avoid redundant deployments
+                        log.info("Data set already deployed: " + def.getUUID());
+                    }
+                    else {
+                        // Register the data set
+                        dataSetDefRegistry.registerDataSetDef(def, "---", "deploy(" + def.getUUID() + ")");
+                        log.info("Data set deployed: " + def.getUUID());
+                    }
+                } catch (Exception e) {
+                    log.error("Data set deployment error: " + f.getName(), e);
+                }
             }
         }
-        // Look for data set removals
+
+        // Look for data sets undeploy
         files = new File(directory).listFiles(_undeployFilter);
         if (files != null) {
             for (File f : files) {
-                if (f.delete()) {
-                    DataSetDefRecord r = deployed.remove(f.getName());
-                    if (r == null) continue;
+                try {
+                    // Avoid repetitions
+                    f.delete();
 
-                    dataSetDefRegistry.removeDataSetDef(r.def.getUUID(), "---", "undeploy(" + r.def.getUUID() + ")");
-                    log.info("Data set removed: " + r.def.getUUID());
+                    // Un-deploy the given uuid
+                    String uuid = f.getName().replace(".undeploy", "");
+                    DataSetDef def = dataSetDefRegistry.getDataSetDef(uuid);
+                    if (def != null) {
+                        dataSetDefRegistry.removeDataSetDef(uuid, "---", "undeploy(" + uuid + ")");
+                        log.info("Data set deleted: " + uuid);
+                    } else {
+                        log.error("Data set not found: " + uuid);
+                    }
+                } catch (Exception e) {
+                    log.error("Data set un-deploy error: " + f.getName(), e);
                 }
             }
         }
@@ -185,7 +198,7 @@ public class DataSetDefDeployer {
 
     FilenameFilter _deployFilter = new FilenameFilter() {
         public boolean accept(File dir, String name) {
-            return name.endsWith(".dset");
+            return name.endsWith(".deploy");
         }
     };
 
@@ -195,20 +208,15 @@ public class DataSetDefDeployer {
         }
     };
 
-    protected class DataSetDefRecord {
+    public File getCSVFile(CSVDataSetDef def) throws Exception {
+        String path = def.getFilePath();
+        if (StringUtils.isBlank(path)) return null;
 
-        DataSetDef def;
-        File defFile;
-        long regTime;
+        File f = new File(path);
+        if (f.exists()) return f;
 
-        DataSetDefRecord(DataSetDef def, File f) {
-            this.def = def;
-            this.regTime = new Date().getTime();
-            this.defFile = f;
-        }
-
-        boolean isOutdated() {
-            return defFile.lastModified() > regTime;
-        }
+        f = new File(directory, path);
+        if (f.exists()) return f;
+        return null;
     }
 }
