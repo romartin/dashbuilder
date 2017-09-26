@@ -17,6 +17,9 @@
   <description>Dashbuilder WebApp</description>
 
   <properties>
+
+    <version.org.wildfly.gwt.sdm>10.1.0.Final</version.org.wildfly.gwt.sdm>
+
     <!-- Add the absolute path for $JBOSS_HOME below to manage another instance -->
     <errai.jboss.home>${project.build.directory}/wildfly-${version.org.wildfly.gwt.sdm}</errai.jboss.home>
     <gwt.compiler.localWorkers>4</gwt.compiler.localWorkers>
@@ -779,7 +782,7 @@
             <configuration>
               <artifactItems>
                 <artifactItem>
-                  <groupId>org.wildfly</groupId>
+                  <groupId>org.jboss.errai</groupId>
                   <artifactId>wildfly-dist</artifactId>
                   <version>${version.org.wildfly.gwt.sdm}</version>
                   <type>zip</type>
