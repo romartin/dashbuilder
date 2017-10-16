@@ -15,6 +15,7 @@
  */
 package org.dashbuilder.common.client.widgets;
 
+import javax.annotation.PostConstruct;
 import javax.inject.Inject;
 
 import org.jboss.errai.common.client.api.IsElement;
@@ -46,6 +47,10 @@ public class AlertBox implements IsElement {
     @Inject
     public AlertBox(View view) {
         this.view = view;
+    }
+
+    @PostConstruct
+    public void init() {
         this.view.init(this);
     }
 
